@@ -1,0 +1,1017 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+/* =========================================================
+   ENUMS
+========================================================= */
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+enum OrganizationType {
+  NGO
+  GOVERNMENT
+  RELIEF_AGENCY
+  SUPPLIER
+  OTHER
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  REQUESTED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  VERIFIED
+  APPROVED
+  REJECTED
+  ACTIVE
+  COMPLETED
+}
+
+enum DisasterType {
+  FLOOD
+  EARTHQUAKE
+  CYCLONE
+  LANDSLIDE
+  DROUGHT
+  FIRE
+  TSUNAMI
+  OTHER
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PaymentMethod {
+  UPI
+  CARD
+  NET_BANKING
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum ExpenseStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  ALTERNATIVE_VERIFICATION
+}
+
+enum EvidenceType {
+  RECEIPT
+  INVOICE
+  PHOTO
+  VIDEO
+  DOCUMENT
+  DELIVERY_PROOF
+  OTHER
+}
+
+enum BatchStatus {
+  CREATED
+  VERIFIED
+  DISPATCHED
+  IN_TRANSIT
+  RECEIVED
+  DISTRIBUTED
+}
+
+enum DeliveryStatus {
+  CREATED
+  DISPATCHED
+  IN_TRANSIT
+  ARRIVED
+  DELIVERED
+  CANCELLED
+}
+
+enum DistributionStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+enum AlertType {
+  SUSPICIOUS_EXPENSE
+  DUPLICATE_BENEFICIARY
+  MISSING_EVIDENCE
+  DEADLINE
+  SUPPLY_SHORTAGE
+  DISTRIBUTION_MISMATCH
+  UNVERIFIED_FUNDRAISER
+  OTHER
+}
+
+enum AlertStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum VerificationAction {
+  SUBMITTED
+  VERIFIED
+  REJECTED
+  REQUEST_EVIDENCE
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILED
+}
+
+
+/* =========================================================
+   ROLE
+========================================================= */
+
+model Role {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  createdAt   DateTime   @default(now())
+
+  users       UserRole[]
+}
+
+
+/* =========================================================
+   USER
+========================================================= */
+
+model User {
+  id                 String         @id @default(uuid())
+  name               String
+  email              String         @unique
+  phone              String?
+  passwordHash       String
+  status             UserStatus     @default(PENDING)
+
+  organizationId     String?
+
+  organization       Organization?  @relation("OrganizationUsers", fields: [organizationId], references: [id])
+
+  roles              UserRole[]
+
+  createdCampaigns   Campaign[]     @relation("CampaignCreator")
+
+  donations          Donation[]
+
+  expenses           Expense[]      @relation("ExpenseResponsible")
+
+  uploadedEvidence   Evidence[]
+
+  auditLogs          AuditLog[]
+
+  verifications      Verification[] @relation("VerificationReviewer")
+
+  alertsResolved     Alert[]        @relation("AlertResolver")
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([email])
+  @@index([organizationId])
+}
+
+
+/* =========================================================
+   USER ROLE
+========================================================= */
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+
+/* =========================================================
+   ORGANIZATION
+========================================================= */
+
+model Organization {
+  id                   String             @id @default(uuid())
+  name                 String
+  registrationNumber   String?            @unique
+  type                 OrganizationType   @default(NGO)
+
+  governmentId         String?
+  bankAccountReference String?
+
+  verificationStatus   VerificationStatus @default(PENDING)
+  riskScore            Int?
+
+  users                User[]             @relation("OrganizationUsers")
+
+  campaigns            Campaign[]
+
+  verificationRecords  Verification[]
+
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([verificationStatus])
+}
+
+
+/* =========================================================
+   DISASTER
+========================================================= */
+
+model Disaster {
+  id                 String              @id @default(uuid())
+  name               String
+  type               DisasterType
+  description        String?
+  location           String
+  severity           Severity
+  affectedPeople     Int                 @default(0)
+
+  requiredResources  String[]
+
+  zones              DisasterZone[]
+
+  camps              Camp[]
+
+  warehouses         Warehouse[]
+
+  hospitals          Hospital[]
+
+  distributionPoints DistributionPoint[]
+
+  campaigns          Campaign[]
+
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+
+/* =========================================================
+   DISASTER ZONE
+========================================================= */
+
+model DisasterZone {
+  id          String   @id @default(uuid())
+  disasterId  String
+
+  name        String
+  latitude    Float?
+  longitude   Float?
+  description String?
+
+  disaster    Disaster @relation(fields: [disasterId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([disasterId])
+}
+
+
+/* =========================================================
+   CAMP
+========================================================= */
+
+model Camp {
+  id          String   @id @default(uuid())
+  disasterId  String
+
+  name        String
+  location    String
+  latitude    Float?
+  longitude   Float?
+  capacity    Int
+  population  Int      @default(0)
+
+  disaster    Disaster @relation(fields: [disasterId], references: [id], onDelete: Cascade)
+
+  beneficiaries  Beneficiary[]
+
+  distributions  Distribution[]
+
+  deliveries     Delivery[]
+
+  reliefBatches  ReliefBatch[] @relation("CampReliefBatches")
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([disasterId])
+}
+
+
+/* =========================================================
+   WAREHOUSE
+========================================================= */
+
+model Warehouse {
+  id          String   @id @default(uuid())
+  disasterId  String?
+
+  name        String
+  location    String
+  latitude    Float?
+  longitude   Float?
+
+  disaster    Disaster? @relation(fields: [disasterId], references: [id])
+
+  inventory      Inventory[]
+
+  deliveries     Delivery[] @relation("WarehouseOrigin")
+
+  reliefBatches  ReliefBatch[] @relation("WarehouseReliefBatches")
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([disasterId])
+}
+
+
+/* =========================================================
+   HOSPITAL
+========================================================= */
+
+model Hospital {
+  id          String    @id @default(uuid())
+  disasterId  String?
+
+  name        String
+  location    String
+  latitude    Float?
+  longitude   Float?
+
+  disaster    Disaster? @relation(fields: [disasterId], references: [id])
+
+  createdAt   DateTime  @default(now())
+
+  @@index([disasterId])
+}
+
+
+/* =========================================================
+   DISTRIBUTION POINT
+========================================================= */
+
+model DistributionPoint {
+  id          String    @id @default(uuid())
+  disasterId  String?
+
+  name        String
+  location    String
+  latitude    Float?
+  longitude   Float?
+
+  disaster    Disaster? @relation(fields: [disasterId], references: [id])
+
+  createdAt   DateTime  @default(now())
+
+  @@index([disasterId])
+}
+
+
+/* =========================================================
+   CAMPAIGN
+========================================================= */
+
+model Campaign {
+  id                 String             @id @default(uuid())
+
+  title              String
+  description        String
+
+  disasterId         String
+  organizationId     String
+  createdById        String
+
+  location           String
+  severity           Severity
+
+  targetAmount       Decimal            @db.Decimal(14, 2)
+  raisedAmount       Decimal            @default(0) @db.Decimal(14, 2)
+
+  deadline           DateTime
+
+  beneficiaryCount   Int                @default(0)
+
+  requiredResources  String[]
+  expectedExpenses   Json?
+  documents          Json?
+
+  verificationStatus VerificationStatus @default(PENDING)
+  status             CampaignStatus     @default(DRAFT)
+
+  trustScore         Int?
+
+  disaster           Disaster            @relation(fields: [disasterId], references: [id])
+
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+
+  createdBy          User                @relation("CampaignCreator", fields: [createdById], references: [id])
+
+  donations          Donation[]
+
+  fundAllocations    FundAllocation[]
+
+  expenses           Expense[]
+
+  reliefBatches      ReliefBatch[]
+
+  verifications      Verification[]
+
+  blockchainTxs      BlockchainTransaction[]
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([disasterId])
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([status])
+}
+
+
+/* =========================================================
+   DONATION
+========================================================= */
+
+model Donation {
+  id             String        @id @default(uuid())
+
+  campaignId     String
+  donorId        String
+
+  amount         Decimal       @db.Decimal(14, 2)
+
+  paymentMethod  PaymentMethod
+
+  status         PaymentStatus @default(PENDING)
+
+  campaign       Campaign      @relation(fields: [campaignId], references: [id])
+
+  donor          User          @relation(fields: [donorId], references: [id])
+
+  payment        Payment?
+
+  blockchainTx   BlockchainTransaction?
+
+  createdAt      DateTime      @default(now())
+
+  @@index([campaignId])
+  @@index([donorId])
+  @@index([status])
+}
+
+
+/* =========================================================
+   PAYMENT
+========================================================= */
+
+model Payment {
+  id               String        @id @default(uuid())
+
+  donationId       String        @unique
+
+  method           PaymentMethod
+
+  amount           Decimal       @db.Decimal(14, 2)
+
+  status           PaymentStatus @default(PENDING)
+
+  gatewayReference String?
+
+  simulated        Boolean       @default(true)
+
+  donation         Donation      @relation(fields: [donationId], references: [id], onDelete: Cascade)
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+
+/* =========================================================
+   FUND ALLOCATION
+========================================================= */
+
+model FundAllocation {
+  id          String        @id @default(uuid())
+
+  campaignId  String
+
+  amount      Decimal       @db.Decimal(14, 2)
+
+  category    String
+
+  purpose     String?
+
+  status      ExpenseStatus @default(PENDING)
+
+  campaign    Campaign      @relation(fields: [campaignId], references: [id])
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([campaignId])
+}
+
+
+/* =========================================================
+   EXPENSE
+========================================================= */
+
+model Expense {
+  id                  String        @id @default(uuid())
+
+  campaignId          String
+
+  responsiblePersonId String?
+
+  amount              Decimal       @db.Decimal(14, 2)
+
+  category             String
+
+  supplier             String?
+
+  date                 DateTime
+
+  paymentMethod        PaymentMethod?
+
+  purpose              String
+
+  location             String?
+
+  gpsLatitude          Float?
+  gpsLongitude         Float?
+
+  status               ExpenseStatus @default(PENDING)
+
+  riskScore            Int?
+
+  riskLevel            RiskLevel?
+
+  aiReasons            String[]
+
+  campaign             Campaign      @relation(fields: [campaignId], references: [id])
+
+  responsiblePerson    User?         @relation("ExpenseResponsible", fields: [responsiblePersonId], references: [id])
+
+  evidence              Evidence[]
+
+  blockchainTx          BlockchainTransaction?
+
+  alerts                Alert[]
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([campaignId])
+  @@index([responsiblePersonId])
+  @@index([status])
+  @@index([riskLevel])
+}
+
+
+/* =========================================================
+   EVIDENCE
+========================================================= */
+
+model Evidence {
+  id                   String       @id @default(uuid())
+
+  expenseId            String?
+
+  uploadedById         String
+
+  type                 EvidenceType
+
+  fileName             String
+
+  fileUrl              String
+
+  fileHash             String?
+
+  relatedTransactionId String?
+
+  timestamp            DateTime     @default(now())
+
+  expense              Expense?     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  uploadedBy           User         @relation(fields: [uploadedById], references: [id])
+
+  createdAt             DateTime     @default(now())
+
+  @@index([expenseId])
+  @@index([uploadedById])
+}
+
+
+/* =========================================================
+   INVENTORY
+========================================================= */
+
+model Inventory {
+  id              String    @id @default(uuid())
+
+  warehouseId     String
+
+  item            String
+
+  quantity        Float     @default(0)
+
+  unit            String?
+
+  minimumRequired Float     @default(0)
+
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([warehouseId])
+}
+
+
+/* =========================================================
+   RELIEF BATCH
+========================================================= */
+
+model ReliefBatch {
+  id                 String       @id @default(uuid())
+
+  campaignId         String
+
+  batchCode          String       @unique
+
+  item               String
+
+  quantity           Float
+
+  unit               String?
+
+  originWarehouseId  String?
+
+  destinationCampId  String?
+
+  status             BatchStatus  @default(CREATED)
+
+  campaign           Campaign     @relation(fields: [campaignId], references: [id])
+
+  originWarehouse    Warehouse?   @relation("WarehouseReliefBatches", fields: [originWarehouseId], references: [id])
+
+  destinationCamp    Camp?        @relation("CampReliefBatches", fields: [destinationCampId], references: [id])
+
+  deliveries         Delivery[]
+
+  distributions      Distribution[]
+
+  blockchainTx       BlockchainTransaction?
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([campaignId])
+  @@index([originWarehouseId])
+  @@index([destinationCampId])
+  @@index([status])
+}
+
+
+/* =========================================================
+   VEHICLE
+========================================================= */
+
+model Vehicle {
+  id             String     @id @default(uuid())
+
+  vehicleNumber  String     @unique
+
+  driverId       String?
+
+  driverName     String?
+
+  driverPhone    String?
+
+  licenseNumber  String?
+
+  status         String     @default("AVAILABLE")
+
+  deliveries     Delivery[]
+
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+
+/* =========================================================
+   DELIVERY
+========================================================= */
+
+model Delivery {
+  id                 String         @id @default(uuid())
+
+  batchId            String
+
+  vehicleId          String?
+
+  originWarehouseId  String?
+
+  destinationCampId  String?
+
+  origin             String
+
+  destination        String
+
+  cargoQuantity      Float
+
+  departure          DateTime?
+
+  arrival            DateTime?
+
+  latitude           Float?
+
+  longitude          Float?
+
+  status             DeliveryStatus @default(CREATED)
+
+  batch              ReliefBatch    @relation(fields: [batchId], references: [id])
+
+  vehicle            Vehicle?       @relation(fields: [vehicleId], references: [id])
+
+  originWarehouse    Warehouse?     @relation("WarehouseOrigin", fields: [originWarehouseId], references: [id])
+
+  destinationCamp    Camp?          @relation(fields: [destinationCampId], references: [id])
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([batchId])
+  @@index([vehicleId])
+  @@index([originWarehouseId])
+  @@index([destinationCampId])
+  @@index([status])
+}
+
+
+/* =========================================================
+   BENEFICIARY
+========================================================= */
+
+model Beneficiary {
+  id             String         @id @default(uuid())
+
+  anonymousCode  String         @unique
+
+  campId         String?
+
+  location       String
+
+  familySize     Int
+
+  eligibility    Json?
+
+  aidHistory     Json?
+
+  camp           Camp?          @relation(fields: [campId], references: [id])
+
+  distributions  Distribution[]
+
+  createdAt      DateTime       @default(now())
+
+  updatedAt      DateTime       @updatedAt
+
+  @@index([campId])
+}
+
+
+/* =========================================================
+   DISTRIBUTION
+========================================================= */
+
+model Distribution {
+  id             String             @id @default(uuid())
+
+  beneficiaryId  String
+
+  batchId        String?
+
+  campId         String?
+
+  item           String
+
+  quantity       Float
+
+  status         DistributionStatus @default(PENDING)
+
+  gpsLatitude    Float?
+
+  gpsLongitude   Float?
+
+  distributedAt  DateTime?
+
+  beneficiary    Beneficiary        @relation(fields: [beneficiaryId], references: [id])
+
+  batch          ReliefBatch?       @relation(fields: [batchId], references: [id])
+
+  camp           Camp?              @relation(fields: [campId], references: [id])
+
+  blockchainTx   BlockchainTransaction?
+
+  createdAt      DateTime           @default(now())
+
+  @@index([beneficiaryId])
+  @@index([batchId])
+  @@index([campId])
+}
+
+
+/* =========================================================
+   ALERT
+========================================================= */
+
+model Alert {
+  id             String       @id @default(uuid())
+
+  type           AlertType
+
+  status         AlertStatus  @default(OPEN)
+
+  message        String
+
+  riskScore      Int?
+
+  reasons        String[]
+
+  expenseId      String?
+
+  resolvedById   String?
+
+  resolvedAt     DateTime?
+
+  expense        Expense?     @relation(fields: [expenseId], references: [id])
+
+  resolvedBy     User?        @relation("AlertResolver", fields: [resolvedById], references: [id])
+
+  createdAt      DateTime     @default(now())
+
+  updatedAt      DateTime     @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([expenseId])
+  @@index([resolvedById])
+}
+
+
+/* =========================================================
+   AUDIT LOG
+========================================================= */
+
+model AuditLog {
+  id          String      @id @default(uuid())
+
+  userId      String?
+
+  action      String
+
+  entity      String
+
+  entityId    String?
+
+  ipAddress   String?
+
+  result      AuditResult @default(SUCCESS)
+
+  timestamp   DateTime    @default(now())
+
+  user        User?       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity])
+  @@index([entityId])
+  @@index([timestamp])
+}
+
+
+/* =========================================================
+   VERIFICATION
+========================================================= */
+
+model Verification {
+  id              String             @id @default(uuid())
+
+  organizationId  String?
+
+  campaignId      String?
+
+  reviewerId      String?
+
+  action          VerificationAction
+
+  status          VerificationStatus @default(PENDING)
+
+  comments        String?
+
+  score           Int?
+
+  organization    Organization?      @relation(fields: [organizationId], references: [id])
+
+  campaign        Campaign?          @relation(fields: [campaignId], references: [id])
+
+  reviewer        User?              @relation("VerificationReviewer", fields: [reviewerId], references: [id])
+
+  createdAt       DateTime           @default(now())
+
+  @@index([organizationId])
+  @@index([campaignId])
+  @@index([reviewerId])
+}
+
+
+/* =========================================================
+   BLOCKCHAIN TRANSACTION
+========================================================= */
+
+model BlockchainTransaction {
+  id               String         @id @default(uuid())
+
+  transactionHash  String         @unique
+
+  blockNumber      Int?
+
+  contractAddress  String?
+
+  network          String?
+
+  entityType       String
+
+  entityId         String
+
+  donationId       String?        @unique
+
+  campaignId       String?
+
+  expenseId        String?        @unique
+
+  batchId          String?        @unique
+
+  distributionId   String?        @unique
+
+  timestamp        DateTime       @default(now())
+
+  donation         Donation?      @relation(fields: [donationId], references: [id])
+
+  campaign         Campaign?     @relation(fields: [campaignId], references: [id])
+
+  expense          Expense?       @relation(fields: [expenseId], references: [id])
+
+  batch            ReliefBatch?   @relation(fields: [batchId], references: [id])
+
+  distribution     Distribution?  @relation(fields: [distributionId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([campaignId])
+}
