@@ -1,0 +1,11 @@
+{
+  "name": "ReliefChain",
+  "short_name": "ReliefChain",
+  "description": "Blockchain-powered disaster relief transparency platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": []
+}
